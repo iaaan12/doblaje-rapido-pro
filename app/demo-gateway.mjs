@@ -31,6 +31,7 @@ export function createDemoGateway() {
   const jobs = new Map();
   let counter = 0;
   return {
+    resumeRemoteJobs: false,
     async createDub(snapshot) {
       const id = `demo-${++counter}`;
       jobs.set(id, { id, snapshot, polls: 0, createdAt: new Date().toISOString(), resource: createDemoResource(id, snapshot) });
@@ -45,6 +46,9 @@ export function createDemoGateway() {
     },
     async listDubs() {
       return { dubs: [...jobs.values()].map(job => ({ dubbing_id: job.id, name: job.snapshot.name, status: 'dubbed', source_language: job.snapshot.sourceLang || 'en', target_languages: [job.snapshot.targetLang], editable: Boolean(job.snapshot.dubbingStudio), created_at: job.createdAt, media_metadata: { content_type: 'video/mp4', duration: 5.8 } })), has_more: false };
+    },
+    async listAllDubs() {
+      return this.listDubs();
     },
     async downloadDub(id, language, format = 'media') {
       return new Blob([`Demo export ${id} ${language} ${format}`], { type: 'video/mp4' });

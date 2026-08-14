@@ -19,7 +19,11 @@ function assertSourceUrl(value) {
 
 export function buildDubbingForm(snapshot = {}) {
   const targetLang = String(snapshot.targetLang || '').trim();
+  const sourceLang = String(snapshot.sourceLang || '').trim();
   if (!targetLang) throw new Error('Seleccioná al menos un idioma destino');
+  if (sourceLang && sourceLang.toLowerCase() === targetLang.toLowerCase()) {
+    throw new Error('Los idiomas de origen y destino deben ser distintos');
+  }
   const manualTracks = snapshot.mode === 'manual' && (snapshot.foregroundAudioFile || snapshot.backgroundAudioFile);
   if (!snapshot.file && !snapshot.sourceUrl && !manualTracks) throw new Error('Falta el archivo o la URL de origen');
   assertSourceUrl(snapshot.sourceUrl);
@@ -28,7 +32,7 @@ export function buildDubbingForm(snapshot = {}) {
   if (snapshot.file) form.append('file', snapshot.file, snapshot.file.name || 'source-media');
   appendIf(form, 'source_url', snapshot.sourceUrl);
   appendIf(form, 'name', snapshot.name);
-  appendIf(form, 'source_lang', snapshot.sourceLang);
+  appendIf(form, 'source_lang', sourceLang);
   appendIf(form, 'target_lang', targetLang);
   appendIf(form, 'num_speakers', snapshot.numSpeakers);
   appendIf(form, 'target_accent', snapshot.targetAccent);
@@ -40,7 +44,7 @@ export function buildDubbingForm(snapshot = {}) {
   if (snapshot.profanityFilter) form.append('use_profanity_filter', 'true');
   if (snapshot.disableVoiceCloning) form.append('disable_voice_cloning', 'true');
   if (snapshot.watermark) form.append('watermark', 'true');
-  form.append('dubbing_studio', 'true');
+  if (snapshot.dubbingStudio) form.append('dubbing_studio', 'true');
   form.append('mode', snapshot.mode === 'manual' ? 'manual' : 'automatic');
   appendFileIf(form, 'csv_file', snapshot.csvFile, 'transcript.csv');
   appendFileIf(form, 'foreground_audio_file', snapshot.foregroundAudioFile, 'foreground.wav');
@@ -57,9 +61,26 @@ async function readBody(response) {
 
 function errorMessage(data, status) {
   if (typeof data === 'string' && data.trim()) return data.slice(0, 400);
-  if (data?.detail) return typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail).slice(0, 400);
-  if (data?.error) return String(data.error).slice(0, 400);
+  if (typeof data?.detail === 'string') return data.detail.slice(0, 400);
+  if (data?.detail?.message) return String(data.detail.message).slice(0, 400);
+  if (typeof data?.error === 'string') return data.error.slice(0, 400);
+  if (data?.error?.message) return String(data.error.message).slice(0, 400);
   return `El gateway respondió ${status}`;
+}
+
+export function mediaExtension(contentType = '') {
+  const mime = String(contentType).split(';')[0].trim().toLowerCase();
+  return ({
+    'audio/aac': 'aac',
+    'audio/flac': 'flac',
+    'audio/mp4': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/ogg': 'ogg',
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav',
+    'video/mp4': 'mp4',
+    'video/webm': 'webm',
+  })[mime] || 'bin';
 }
 
 export function createDubbingGateway({ baseUrl = DEFAULT_API, fetchImpl = globalThis.fetch } = {}) {
@@ -98,30 +119,47 @@ export function createDubbingGateway({ baseUrl = DEFAULT_API, fetchImpl = global
     });
   }
 
+  function listDubs(query = {}) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null && value !== '') params.set(key, value);
+    }
+    const suffix = params.toString() ? `?${params}` : '';
+    return request(`/v1/dubbing${suffix}`);
+  }
+
   return {
     async createDub(snapshot) {
       return request('/v1/dubbing', { method: 'POST', body: buildDubbingForm(snapshot) });
     },
     async getDub(id) { return request(`/v1/dubbing/${encodeURIComponent(id)}`); },
-    async listDubs(query = {}) {
-      const params = new URLSearchParams();
-      for (const [key, value] of Object.entries(query)) {
-        if (value !== undefined && value !== null && value !== '') params.set(key, value);
+    listDubs,
+    async listAllDubs(query = {}) {
+      const dubs = [];
+      const seenCursors = new Set();
+      let cursor = query.cursor;
+      let response = null;
+      for (let page = 0; page < 20; page += 1) {
+        response = await listDubs({ ...query, page_size: query.page_size || 200, cursor });
+        dubs.push(...(response?.dubs || []));
+        const next = response?.next_cursor;
+        if (!response?.has_more || !next || seenCursors.has(next)) break;
+        seenCursors.add(next);
+        cursor = next;
       }
-      const suffix = params.toString() ? `?${params}` : '';
-      return request(`/v1/dubbing${suffix}`);
+      return { ...(response || {}), dubs };
     },
     async downloadDub(id, language, format = 'media') {
       if (format !== 'media') throw new Error(`El gateway no expone todavía el formato ${format}`);
       return requestBlob(`/v1/dubbing/${pathPart(id)}/audio/${pathPart(language)}`);
     },
     async getTranscript(id, language, format = 'json') {
-      const canonical = `/v1/dubbing/${pathPart(id)}/transcript/${pathPart(language)}?format_type=${pathPart(format)}`;
+      const canonical = `/v1/dubbing/${pathPart(id)}/transcripts/${pathPart(language)}/format/${pathPart(format)}`;
       try {
         return await request(canonical);
       } catch (error) {
         if (error.status !== 404 && error.status !== 405) throw error;
-        return request(`/v1/dubbing/${pathPart(id)}/transcripts/${pathPart(language)}/format/${pathPart(format)}`);
+        return request(`/v1/dubbing/${pathPart(id)}/transcript/${pathPart(language)}?format_type=${pathPart(format)}`);
       }
     },
     async deleteDub(id) { return request(`/v1/dubbing/${pathPart(id)}`, { method: 'DELETE' }); },

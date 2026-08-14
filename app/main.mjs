@@ -1,5 +1,5 @@
 import { LANGUAGES, languageName } from './languages.mjs';
-import { createDubbingGateway } from './gateway.mjs';
+import { createDubbingGateway, mediaExtension } from './gateway.mjs';
 import { createDemoGateway } from './demo-gateway.mjs';
 import { QueueManager } from './queue.mjs';
 import { createJobStore } from './storage.mjs';
@@ -63,13 +63,12 @@ function appendLanguageOptions(select, selected = '', preserveFirst = false) {
 
 function populateLanguages() {
   const source = $('#sourceLang');
-  source.append(node('option', '', 'Auto-detectar'));
   for (const [code, name] of LANGUAGES) {
     const option = node('option', '', `${name} · ${code}`);
     option.value = code;
     source.append(option);
   }
-  source.value = 'en';
+  source.value = '';
   renderTargetPicker(['es']);
   appendLanguageOptions($('#libraryLanguage'), '', true);
   appendLanguageOptions($('#newStudioLanguage'));
@@ -101,7 +100,7 @@ function updateSummary() {
   $('#targetSummary').classList.toggle('valid', Boolean(targets.length));
   $('#summaryFiles').textContent = count;
   $('#summaryLangs').textContent = targets.length;
-  $('#summaryModel').textContent = 'Legacy v1 / Studio';
+  $('#summaryModel').textContent = $('#dubbingStudio')?.checked ? 'Legacy v1 / Studio' : 'Legacy v1';
   $('#summaryEstimate').textContent = count && targets.length ? `${count * targets.length} proyecto${count * targets.length === 1 ? '' : 's'}` : '—';
 }
 
@@ -141,7 +140,7 @@ function currentSettings(targetLang) {
     dropBackgroundAudio: $('#dropBackgroundAudio').checked,
     profanityFilter: $('#profanityFilter').checked,
     disableVoiceCloning: $('#disableVoiceCloning').checked,
-    dubbingStudio: true,
+    dubbingStudio: $('#dubbingStudio').checked,
     mode: $('#mode').value,
     watermark: $('#watermark').value === 'true',
     csvFps: number($('#csvFps').value),
@@ -158,13 +157,14 @@ function validateForm() {
   const mode = $('#mode').value;
   const manualAudio = fileInputValue('foregroundAudioInput') || fileInputValue('backgroundAudioInput');
   if (!targets.length) return 'Elegí al menos un idioma destino.';
+  if ($('#sourceLang').value && targets.includes($('#sourceLang').value)) return 'Los idiomas de origen y destino deben ser distintos.';
   if (state.sourceMode === 'file' && !state.files.length && !(mode === 'manual' && manualAudio)) return 'Subí al menos un archivo de audio o video.';
   if (state.sourceMode === 'url') {
     const value = $('#sourceUrl').value.trim();
     try { const url = new URL(value); if (!['http:', 'https:'].includes(url.protocol)) throw new Error(); } catch { return 'Ingresá una URL http o https válida.'; }
   }
   if (mode === 'manual' && !fileInputValue('csvInput')) return 'El modo manual necesita un archivo CSV.';
-  if (state.files.some(file => file.size > 2 * 1024 * 1024 * 1024)) return 'Uno de los archivos supera el límite de 2 GB.';
+  if (state.files.some(file => file.size > 1024 * 1024 * 1024)) return 'Uno de los archivos supera el límite de 1 GB de Dubbing v1.';
   const start = $('#startTime').value === '' ? null : Number($('#startTime').value);
   const end = $('#endTime').value === '' ? null : Number($('#endTime').value);
   if (start !== null && end !== null && end <= start) return 'El final debe ser mayor que el inicio.';
@@ -194,7 +194,7 @@ function openReview(event) {
   if (error) { setFormError(error); return; }
   state.pendingDescriptors = makeDescriptors();
   const first = state.pendingDescriptors[0];
-  $('#confirmSummary').textContent = `${state.pendingDescriptors.length} proyecto${state.pendingDescriptors.length === 1 ? '' : 's'} · Legacy v1 / Studio · ${first.settings.mode === 'manual' ? 'manual' : 'automático'} · ${selectedTargets().map(languageName).join(', ')}`;
+  $('#confirmSummary').textContent = `${state.pendingDescriptors.length} proyecto${state.pendingDescriptors.length === 1 ? '' : 's'} · ${first.settings.dubbingStudio ? 'Legacy v1 / Studio' : 'Legacy v1'} · ${first.settings.mode === 'manual' ? 'manual' : 'automático'} · ${selectedTargets().map(languageName).join(', ')}`;
   const dialog = $('#confirmDialog');
   if (typeof dialog.showModal === 'function') dialog.showModal();
   else if (window.confirm($('#confirmSummary').textContent)) createPendingJobs();
@@ -234,7 +234,8 @@ function renderQueue(items = queue.getItems()) {
     const actions = node('div', 'queue-buttons');
     if (job.status === 'dubbed') { const download = node('button', 'mini-button', 'Descargar'); download.type = 'button'; download.addEventListener('click', () => downloadJob(job)); actions.append(download); }
     if (['queued', 'preparing', 'processing'].includes(job.status)) { const cancel = node('button', 'mini-button danger', 'Cancelar'); cancel.type = 'button'; cancel.addEventListener('click', () => queue.cancel(job.id)); actions.append(cancel); }
-    if (['failed', 'cancelled', 'needs-source'].includes(job.status)) { const retry = node('button', 'mini-button', 'Reintentar'); retry.type = 'button'; retry.addEventListener('click', () => queue.retry(job.id)); actions.append(retry); }
+    if (['failed', 'cancelled'].includes(job.status)) { const retry = node('button', 'mini-button', 'Reintentar'); retry.type = 'button'; retry.addEventListener('click', () => queue.retry(job.id)); actions.append(retry); }
+    if (job.status === 'needs-source') { const attach = node('button', 'mini-button', 'Reasignar archivo'); attach.type = 'button'; attach.addEventListener('click', () => { const picker = document.createElement('input'); picker.type = 'file'; picker.accept = 'audio/*,video/*'; picker.addEventListener('change', () => picker.files?.[0] && queue.attachFile(job.id, picker.files[0]), { once: true }); picker.click(); }); actions.append(attach); }
     if (['dubbed', 'failed', 'cancelled'].includes(job.status)) { const remove = node('button', 'mini-button danger', 'Quitar'); remove.type = 'button'; remove.addEventListener('click', () => queue.remove(job.id)); actions.append(remove); }
     row.append(info, progress, actions); list.append(row);
   }
@@ -246,7 +247,7 @@ async function downloadJob(job) {
   try {
     const blob = await gateway.downloadDub(job.dubbingId, job.targetLang, 'media');
     const url = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
-    const anchor = node('a'); anchor.href = url; anchor.download = `${job.name.replace(/[^\w\-]+/g, '-')}.mp4`; anchor.click();
+    const anchor = node('a'); anchor.href = url; anchor.download = `${job.name.replace(/[^\w\-]+/g, '-')}.${mediaExtension(blob.type)}`; anchor.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000); showToast('Descarga iniciada.');
   } catch (error) { showToast(error.message || 'No se pudo descargar el dub.', 'error'); }
 }
@@ -274,7 +275,7 @@ function renderLibrary() {
 
 async function refreshLibrary() {
   try {
-    const response = await gateway.listDubs(); state.library = (response?.dubs || []).map(normalizeRecord); $('#libraryCount').textContent = state.library.length; renderLibrary();
+    const response = await gateway.listAllDubs(); state.library = (response?.dubs || []).map(normalizeRecord); $('#libraryCount').textContent = state.library.length; renderLibrary();
     $('#connectionLabel').textContent = demoMode ? 'Modo demo local' : 'Gateway configurado'; $('#usageLabel').textContent = 'conectado';
   } catch { $('#connectionLabel').textContent = 'Gateway sin respuesta'; $('#usageLabel').textContent = 'revisar'; renderLibrary(); }
 }
@@ -426,7 +427,7 @@ function wireEvents() {
   $$('.segment').forEach(button => button.addEventListener('click', () => setSourceMode(button.dataset.sourceMode)));
   $('#dropZone').addEventListener('click', () => $('#fileInput').click()); $('#dropZone').addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('#fileInput').click(); } });
   $('#dropZone').addEventListener('dragover', event => { event.preventDefault(); $('#dropZone').classList.add('drag'); }); $('#dropZone').addEventListener('dragleave', () => $('#dropZone').classList.remove('drag')); $('#dropZone').addEventListener('drop', event => { event.preventDefault(); $('#dropZone').classList.remove('drag'); state.files = [...event.dataTransfer.files]; renderFiles(); }); $('#fileInput').addEventListener('change', event => { state.files = [...event.target.files]; renderFiles(); });
-  $('#targetSearch').addEventListener('input', () => renderTargetPicker()); $('#sourceUrl').addEventListener('input', updateSummary); $('#mode').addEventListener('change', () => { $('#manualInputs').hidden = $('#mode').value !== 'manual'; updateSummary(); }); $('#dubbingForm').addEventListener('submit', openReview); $('#reviewButton').addEventListener('click', openReview);
+  $('#targetSearch').addEventListener('input', () => renderTargetPicker()); $('#sourceUrl').addEventListener('input', updateSummary); $('#dubbingStudio').addEventListener('change', updateSummary); $('#mode').addEventListener('change', () => { $('#manualInputs').hidden = $('#mode').value !== 'manual'; updateSummary(); }); $('#dubbingForm').addEventListener('submit', openReview); $('#reviewButton').addEventListener('click', openReview);
   $('#confirmCreate').addEventListener('click', event => { event.preventDefault(); createPendingJobs(); }); $('#clearFinished').addEventListener('click', async () => { for (const job of [...queue.getItems()]) if (['dubbed', 'failed', 'cancelled'].includes(job.status)) await queue.remove(job.id); });
   $('#refreshButton').addEventListener('click', refreshLibrary); $('#newFromLibrary').addEventListener('click', () => switchView('create')); $('#librarySearch').addEventListener('input', renderLibrary); $('#libraryStatus').addEventListener('change', renderLibrary); $('#libraryLanguage').addEventListener('change', renderLibrary); $('#studioBack').addEventListener('click', () => switchView('library')); $('#studioLibraryButton').addEventListener('click', () => switchView('library')); $('#exportTranscript').addEventListener('click', exportTranscript);
   $('#studioRefresh').addEventListener('click', () => state.studio && loadStudio(state.studio, state.studioLanguage)); $('#studioLanguage').addEventListener('change', () => state.studio && loadStudio(state.studio, $('#studioLanguage').value)); $('#addStudioLanguage').addEventListener('click', addStudioLanguage); $('#transcribeStudio').addEventListener('click', transcribeStudio); $('#redubStudio').addEventListener('click', redubStudio); $('#renderButton').addEventListener('click', renderProject); $('#addSegment').addEventListener('click', addSegment); $('#newSpeaker').addEventListener('click', newSpeaker);
