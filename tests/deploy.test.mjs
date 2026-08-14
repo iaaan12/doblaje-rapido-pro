@@ -11,6 +11,12 @@ test('build produces the static runtime that Vercel serves', () => {
   rmSync(outputDirectory, { recursive: true, force: true });
 
   try {
+    assert.equal(
+      existsSync(path.join(root, 'server.mjs')),
+      false,
+      'Root server.mjs would be detected as a Vercel serverless entrypoint',
+    );
+
     const result = spawnSync(process.execPath, ['scripts/build-static.mjs'], {
       cwd: root,
       encoding: 'utf8',
@@ -22,6 +28,7 @@ test('build produces the static runtime that Vercel serves', () => {
       'index.html',
       'styles.css',
       'compat.css',
+      'favicon.svg',
       'app/main.mjs',
       'app/gateway.mjs',
       'app/demo-gateway.mjs',
