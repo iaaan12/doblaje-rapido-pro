@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doblaje Rápido Pro</title>
+<link rel="icon" href="data:,">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+    min-height: 100vh;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 2rem 1rem;
+  }
+  h1 { font-size: 2rem; margin-bottom: .3rem; background: linear-gradient(90deg,#ffd86f,#fc6262); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .sub { color: #aaa; margin-bottom: 1.5rem; font-size: .9rem; }
+  .card {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 16px;
+    padding: 1.5rem;
+    width: 100%;
+    max-width: 720px;
+    backdrop-filter: blur(8px);
+    margin-bottom: 1.5rem;
+  }
+  #drop {
+    border: 2px dashed rgba(255,255,255,.25);
+    border-radius: 12px;
+    padding: 2rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s;
+    color: #bbb;
+  }
+  #drop.drag { border-color: #ffd86f; background: rgba(255,216,111,.08); color: #ffd86f; }
+  #drop .icon { font-size: 2.5rem; margin-bottom: .5rem; }
+  #fileinfo { margin-top: .6rem; font-size: .85rem; color: #ffd86f; word-break: break-all; }
+  .row { display: flex; gap: .8rem; margin: 1.2rem 0; flex-wrap: wrap; }
+  .field { flex: 1; min-width: 150px; }
+  label { display: block; font-size: .75rem; color: #aaa; margin-bottom: .3rem; text-transform: uppercase; letter-spacing: .5px; }
+  select, input[type=text], input[type=url] {
+    width: 100%;
+    background: rgba(0,0,0,.3);
+    border: 1px solid rgba(255,255,255,.15);
+    color: #eee;
+    border-radius: 8px;
+    padding: .55rem .6rem;
+    font-size: .9rem;
+  }
+  .check { display: flex; align-items: center; gap: .5rem; margin-top: .9rem; font-size: .9rem; color: #ccc; }
+  .check input { width: auto; }
+  #go {
+    width: 100%;
+    padding: .9rem;
+    border: none;
+    border-radius: 10px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: linear-gradient(90deg,#ffd86f,#fc6262);
+    color: #1a1a2e;
+    transition: transform .15s, opacity .2s;
+    margin-top: 1.2rem;
+  }
+  #go:hover { transform: scale(1.02); }
+  #go:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .queue-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: .8rem; }
+  .queue-title h2 { font-size: 1.1rem; }
+  #clearqueue { background: rgba(252,98,98,.15); border: 1px solid rgba(252,98,98,.4); color: #fc6262; padding: .35rem .8rem; border-radius: 8px; cursor: pointer; font-size: .8rem; }
+  .qitem {
+    background: rgba(0,0,0,.25);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px;
+    padding: .7rem .9rem;
+    margin-bottom: .6rem;
+    display: flex;
+    align-items: center;
+    gap: .8rem;
+  }
+  .qitem .name { flex: 1; font-size: .85rem; word-break: break-all; }
+  .qitem .qstatus { font-size: .75rem; color: #aaa; min-width: 90px; text-align: right; }
+  .qitem .qbar { width: 100px; height: 6px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; }
+  .qitem .qbar div { height: 100%; width: 0%; background: linear-gradient(90deg,#ffd86f,#fc6262); transition: width .4s; }
+  .qitem .qdl { background: #22c55e; border: none; color: #fff; padding: .3rem .7rem; border-radius: 6px; cursor: pointer; font-size: .75rem; display: none; }
+  .qitem .qdel { background: rgba(252,98,98,.15); border: 1px solid rgba(252,98,98,.4); color: #fc6262; padding: .3rem .6rem; border-radius: 6px; cursor: pointer; font-size: .75rem; }
+  .qitem.active { border-color: #ffd86f; }
+  .qitem.error { border-color: #fc6262; }
+  .qitem.done { border-color: #22c55e; }
+  #status { margin-top: 1.2rem; display: none; }
+  .bar { height: 8px; background: rgba(255,255,255,.1); border-radius: 4px; overflow: hidden; }
+  .bar div { height: 100%; width: 0%; background: linear-gradient(90deg,#ffd86f,#fc6262); transition: width .4s; }
+  #statustext { margin-top: .6rem; font-size: .9rem; color: #ddd; text-align: center; }
+  #err { color: #fc6262; margin-top: .8rem; font-size: .85rem; display: none; text-align: center; }
+  .note { margin-top: 1rem; font-size: .75rem; color: #666; text-align: center; }
+  .tabs { display: flex; gap: .5rem; margin-bottom: 1rem; }
+  .tab { padding: .5rem 1.2rem; border-radius: 8px; cursor: pointer; font-size: .9rem; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: #aaa; }
+  .tab.active { background: linear-gradient(90deg,#ffd86f,#fc6262); color: #1a1a2e; font-weight: 600; border: none; }
+  .dublist { max-height: 300px; overflow-y: auto; }
+  .dubrow { display: flex; align-items: center; gap: .6rem; padding: .5rem; border-bottom: 1px solid rgba(255,255,255,.06); font-size: .8rem; }
+  .dubrow .dname { flex: 1; word-break: break-all; }
+  .dubrow button { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); color: #ddd; padding: .25rem .6rem; border-radius: 6px; cursor: pointer; font-size: .7rem; }
+  .dubrow button.dl { background: #22c55e; border: none; color: #fff; }
+  .dubrow button.del { color: #fc6262; border-color: rgba(252,98,98,.4); background: rgba(252,98,98,.1); }
+  a { color: #ffd86f; }
+</style>
+</head>
+<body>
+  <h1>🎬 Doblaje Rápido Pro</h1>
+  <div class="sub">Doblaje automático con ElevenLabs — cola de videos, Dubbing v2, todas las opciones</div>
+
+  <div class="card">
+    <div class="tabs">
+      <div class="tab active" data-tab="new">Nuevo doblaje</div>
+      <div class="tab" data-tab="existing">Dubs existentes</div>
+    </div>
+
+    <div id="tab-new">
+      <div id="drop">
+        <div class="icon">🎞️</div>
+        <div>Arrastra videos/audios aquí o <u>haz clic para elegir</u> (múltiple)</div>
+        <input type="file" id="file" hidden multiple accept="video/*,audio/*,.mp4,.mp3,.mov,.webm,.mkv,.wav,.m4a,.aac,.flac">
+        <div id="fileinfo"></div>
+      </div>
+
+      <div class="row">
+        <div class="field" style="flex:2">
+          <label>O desde URL</label>
+          <input type="url" id="sourceUrl" placeholder="https://ejemplo.com/video.mp4 (opcional)">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Idioma origen</label>
+          <select id="srcLang">
+            <option value="">Auto-detectar</option>
+            <option value="en">Inglés</option>
+            <option value="es">Español</option>
+            <option value="pt">Portugués</option>
+            <option value="fr">Francés</option>
+            <option value="de">Alemán</option>
+            <option value="it">Italiano</option>
+            <option value="tr">Turco</option>
+            <option value="hi">Hindi</option>
+            <option value="ja">Japonés</option>
+            <option value="ko">Coreano</option>
+            <option value="zh">Chino</option>
+            <option value="ar">Árabe</option>
+            <option value="ru">Ruso</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Idioma destino</label>
+          <select id="dstLang">
+            <option value="es">Español</option>
+            <option value="en">Inglés</option>
+            <option value="pt">Portugués</option>
+            <option value="fr">Francés</option>
+            <option value="de">Alemán</option>
+            <option value="it">Italiano</option>
+            <option value="tr">Turco</option>
+            <option value="hi">Hindi</option>
+            <option value="ja">Japonés</option>
+            <option value="ko">Coreano</option>
+            <option value="zh">Chino</option>
+            <option value="ar">Árabe</option>
+            <option value="ru">Ruso</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label>Modelo de doblaje</label>
+          <select id="dubModel">
+            <option value="dubbing_v2">Dubbing v2 (más nuevo)</option>
+            <option value="dubbing_v1">Dubbing v1</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Nº de hablantes</label>
+          <select id="speakers">
+            <option value="">Auto</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Usar dub como base (opcional)</label>
+          <select id="useProxy">
+            <option value="">Ninguno</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="check"><input type="checkbox" id="optNoise" checked> <span>Eliminar ruido de fondo</span></div>
+        <div class="check"><input type="checkbox" id="optWatermark"> <span>Marca de agua</span></div>
+        <div class="check"><input type="checkbox" id="optStudio"> <span>Dubbing Studio (editable)</span></div>
+      </div>
+
+      <button id="go">📼 Añadir a cola y doblar</button>
+
+      <div id="status">
+        <div class="bar"><div id="barfill"></div></div>
+        <div id="statustext"></div>
+      </div>
+      <div id="err"></div>
+    </div>
+
+    <div id="tab-existing" style="display:none">
+      <div class="queue-title"><h2>Dubs en la cuenta (archivo de ScalBoost)</h2><button id="refreshdubs">↻ Refrescar</button></div>
+      <div class="dublist" id="dublist"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="queue-title"><h2>Cola de doblaje</h2><button id="clearqueue">🗑 Limpiar terminados</button></div>
+    <div id="queue"></div>
+    <div id="queueempty" style="color:#666;font-size:.85rem;text-align:center;padding:1rem">Cola vacía — añade archivos arriba</div>
+  </div>
+
+  <div class="note">Procesa en servidores ElevenLabs (cuenta corporativa, Dubbing v2). Videos largos tardan más. Cierre la pestaña no cancela el proceso; use "Refrescar" en Dubs existentes.</div>
+
+<script>
+  const API = 'https://xrknoioturyuuzxmuwka.supabase.co/functions/v1/elevenlabs';
+  const drop = document.getElementById('drop');
+  const fileInput = document.getElementById('file');
+  const fileinfo = document.getElementById('fileinfo');
+  const go = document.getElementById('go');
+  const queueEl = document.getElementById('queue');
+  const queueEmpty = document.getElementById('queueempty');
+  const errBox = document.getElementById('err');
+  const statusBox = document.getElementById('status');
+  const barfill = document.getElementById('barfill');
+  const statustext = document.getElementById('statustext');
+
+  const queue = [];
+  let processing = false;
+  let fileCounter = 0;
+
+  // tabs
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('tab-new').style.display = t.dataset.tab === 'new' ? '' : 'none';
+    document.getElementById('tab-existing').style.display = t.dataset.tab === 'existing' ? '' : 'none';
+    if (t.dataset.tab === 'existing') loadDubs();
+  }));
+
+  drop.addEventListener('click', () => fileInput.click());
+  ['dragenter', 'dragover'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove('drag'); }));
+  drop.addEventListener('drop', ev => { if (ev.dataTransfer.files.length) setFiles(ev.dataTransfer.files); });
+  fileInput.addEventListener('change', () => { if (fileInput.files.length) setFiles(fileInput.files); });
+
+  function setFiles(files) {
+    fileinfo.textContent = `${files.length} archivo(s) añadido(s): ${Array.from(files).map(f => f.name).join(', ').slice(0, 120)}`;
+    for (const f of files) enqueue({ file: f, name: f.name });
+  }
+
+  function enqueue(item) {
+    item.id = ++fileCounter;
+    item.status = 'pending';
+    item.pct = 0;
+    item.dubbingId = null;
+    item.error = null;
+    queue.push(item);
+    renderQueue();
+    if (!processing) processNext();
+  }
+
+  function renderQueue() {
+    queueEl.innerHTML = '';
+    const pending = queue.filter(q => ['pending', 'processing'].includes(q.status)).length;
+    queueEmpty.style.display = queue.length ? 'none' : '';
+    for (const q of queue) {
+      const el = document.createElement('div');
+      el.className = 'qitem ' + (q.status === 'processing' ? 'active' : q.status === 'error' ? 'error' : q.status === 'done' ? 'done' : '');
+      const bar = q.status === 'processing' || q.status === 'pending' ? `<div class="qbar"><div style="width:${q.pct}%"></div></div>` : '';
+      el.innerHTML = `
+        <div class="name">${q.name}</div>
+        ${bar}
+        <div class="qstatus">${q.status === 'processing' ? q.statusText || 'procesando…' : q.status === 'pending' ? `en cola (posición ${pending})` : q.status === 'done' ? '✅ listo' : q.status === 'error' ? '❌ error' : ''}</div>
+        <button class="qdl" data-id="${q.id}" ${q.status === 'done' ? '' : 'style="display:none"'}>⬇ Descargar</button>
+        <button class="qdel" data-id="${q.id}">✕</button>`;
+      el.querySelector('.qdel').addEventListener('click', () => {
+        const i = queue.findIndex(x => x.id === q.id);
+        if (i >= 0 && q.status !== 'processing') { queue.splice(i, 1); renderQueue(); }
+      });
+      const dl = el.querySelector('.qdl');
+      if (dl) dl.addEventListener('click', () => downloadDub(q));
+      queueEl.appendChild(el);
+    }
+  }
+
+  function updateQueueItem(id, patch) {
+    const q = queue.find(x => x.id === id);
+    if (q) Object.assign(q, patch);
+    renderQueue();
+  }
+
+  async function processNext() {
+    if (processing) return;
+    const item = queue.find(q => q.status === 'pending');
+    if (!item) { processing = false; return; }
+    processing = true;
+    updateQueueItem(item.id, { status: 'processing', pct: 5, statusText: 'subiendo…' });
+    try {
+      const fd = new FormData();
+      fd.append('target_lang', document.getElementById('dstLang').value);
+      const src = document.getElementById('srcLang').value;
+      if (src) fd.append('source_lang', src);
+      const spk = document.getElementById('speakers').value;
+      if (spk) fd.append('num_speakers', spk);
+      const model = document.getElementById('dubModel').value;
+      fd.append('model_id', model);
+      if (document.getElementById('optNoise').checked) fd.append('remove_background_noise', 'true');
+      if (document.getElementById('optWatermark').checked) fd.append('watermark', 'true');
+      if (document.getElementById('optStudio').checked) fd.append('dubbing_studio', 'true');
+      const proxyId = document.getElementById('useProxy').value;
+      if (proxyId) fd.append('use_proxy', proxyId);
+      if (item.file) fd.append('file', item.file, item.file.name);
+      const url = document.getElementById('sourceUrl').value.trim();
+      if (!item.file && url) fd.append('source_url', url);
+      if (!item.file && !url) throw new Error('Sin archivo ni URL');
+
+      const res = await api('/v1/dubbing', { method: 'POST', body: fd });
+      item.dubbingId = res.dubbing_id;
+      updateQueueItem(item.id, { status: 'processing', pct: 30, statusText: 'trabajo creado, procesando…' });
+      await poll(item);
+    } catch (e) {
+      updateQueueItem(item.id, { status: 'error', error: e.message });
+    } finally {
+      processing = false;
+      const next = queue.find(q => q.status === 'pending');
+      if (next) processNext();
+    }
+  }
+
+  const STEPS = { preparing: 35, queued: 40, transcribing: 50, translating: 65, dubbing: 80, dubbed: 100, error: 100 };
+
+  async function poll(item) {
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 4000));
+      if (!queue.find(x => x.id === item.id)) return;
+      let s;
+      try { s = await api('/v1/dubbing/' + item.dubbingId); }
+      catch (e) { continue; }
+      const st = s.status;
+      updateQueueItem(item.id, { status: 'processing', pct: STEPS[st] || 45, statusText: st + '…' });
+      if (st === 'dubbed') {
+        item.dub = s;
+        updateQueueItem(item.id, { status: 'done', pct: 100, statusText: 'listo' });
+        return;
+      }
+      if (st === 'error') throw new Error('Error del servidor en el doblaje');
+    }
+    throw new Error('Timeout de proceso');
+  }
+
+  async function downloadDub(item) {
+    try {
+      const lang = item.dub?.target_languages?.[0] || document.getElementById('dstLang').value;
+      const blob = await api(`/v1/dubbing/${item.dubbingId}/audio/${lang}`);
+      const a = document.createElement('a');
+      const base = (item.name || 'doblaje').replace(/\.[^.]+$/, '');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${base}_${lang}.mp4`;
+      a.click();
+    } catch (e) { alert('Error al descargar: ' + e.message); }
+  }
+
+  async function api(path, opts = {}) {
+    const r = await fetch(API + path, opts);
+    const ct = r.headers.get('content-type') || '';
+    const data = ct.includes('json') ? await r.json() : await r.blob();
+    if (!r.ok) throw new Error(typeof data === 'string' ? data : (data.detail ? JSON.stringify(data.detail).slice(0, 300) : JSON.stringify(data).slice(0, 300)));
+    return data;
+  }
+  // dubs existentes
+  async function loadDubs() {
+    const list = document.getElementById('dublist');
+    list.innerHTML = '<div style="color:#666;text-align:center;padding:1rem">Cargando…</div>';
+    try {
+      const { dubs } = await api('/v1/dubbing');
+      list.innerHTML = '';
+      if (!dubs || !dubs.length) { list.innerHTML = '<div style="color:#666;text-align:center;padding:1rem">Sin dubs en la cuenta</div>'; return; }
+      for (const d of dubs) {
+        const row = document.createElement('div');
+        row.className = 'dubrow';
+        const langs = (d.target_languages || []).join(', ') || '-';
+        row.innerHTML = `
+          <div class="dname">${d.name}<br><span style="color:#888;font-size:.7rem">${d.status} · ${d.source_language}→${langs} · ${d.dubbing_id.slice(0,8)}</span></div>
+          <button class="dl" data-id="${d.dubbing_id}">⬇</button>
+          <button class="del" data-id="${d.dubbing_id}">🗑</button>`;
+        row.querySelector('.dl').addEventListener('click', async () => {
+          try {
+            const lang = d.target_languages?.[0];
+            if (!lang) return alert('Sin idioma destino');
+            const blob = await api(`/v1/dubbing/${d.dubbing_id}/audio/${lang}`);
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = d.name || d.dubbing_id + '.mp4';
+            a.click();
+          } catch (e) { alert('Error: ' + e.message); }
+        });
+        row.querySelector('.del').addEventListener('click', async () => {
+          if (!confirm('¿Borrar dub ' + d.name + '?')) return;
+          try {
+            const r = await fetch(API + '/v1/dubbing/' + d.dubbing_id, { method: 'DELETE' });
+            if (r.ok || r.status === 200) loadDubs();
+            else alert('Error al borrar');
+          } catch (e) { alert(e.message); }
+        });
+        list.appendChild(row);
+      }
+    } catch (e) { list.innerHTML = '<div style="color:#fc6262;text-align:center;padding:1rem">Error: ' + e.message + '</div>'; }
+  }
+  document.getElementById('refreshdubs').addEventListener('click', loadDubs);
+
+  // poblar useProxy select
+  async function loadProxyOptions() {
+    try {
+      const { dubs } = await api('/v1/dubbing');
+      const sel = document.getElementById('useProxy');
+      sel.innerHTML = '<option value="">Ninguno</option>';
+      for (const d of (dubs || [])) {
+        const o = document.createElement('option');
+        o.value = d.dubbing_id;
+        o.textContent = d.name + ' (' + d.dubbing_id.slice(0, 8) + ')';
+        sel.appendChild(o);
+      }
+    } catch (e) {}
+  }
+  loadProxyOptions();
+
+  go.addEventListener('click', () => {
+    const url = document.getElementById('sourceUrl').value.trim();
+    if (!url) { fileInput.click(); return; }
+    enqueue({ file: null, name: url.split('/').pop() || url });
+  });
+  document.getElementById('clearqueue').addEventListener('click', () => {
+    const remaining = queue.filter(q => q.status === 'processing');
+    queue.length = 0;
+    queue.push(...remaining);
+    renderQueue();
+  });
+</script>
+</body>
+</html>
