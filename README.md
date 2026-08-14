@@ -1,37 +1,62 @@
-# 🎬 Doblaje Rápido Pro
+# Doblaje Rápido Pro
 
-Aplicación web para doblaje automático de videos y audios usando el servicio ElevenLabs Dubbing. Cola de múltiples archivos, todas las opciones de doblaje, y descarga directa del resultado.
+Workbench personal para crear y administrar proyectos de ElevenLabs Dubbing v1 con el gateway configurado en `app/gateway.mjs`.
 
-## Características
+## Incluye
 
-- **Cola de doblaje** — añade múltiples videos/audios y se procesan en secuencia automáticamente
-- **Doblaje desde archivo o URL** — arrastra archivos o pega una URL directa
-- **13 idiomas** de origen (con auto-detección) y destino
-- **Opciones completas del API de dubbing**:
-  - `num_speakers` (auto o 1-7)
-  - `remove_background_noise` — eliminar ruido de fondo
-  - `watermark` — marca de agua
-  - `dubbing_studio` — doblaje editable
-  - `use_proxy` — re-doblar un dubbing existente como base
-- **Dubs existentes** — lista, descarga y borra dubbings previos
-- **Progreso en vivo** por cada item de la cola (subiendo → transcribiendo → traduciendo → doblando → listo)
-- Descarga individual con nombre original + idioma
+- Dubbing v1 + Dubbing Studio como único modelo de creación; no hay ruta v2 en la UI.
+- Modos automático y manual v1, con CSV, foreground audio, background audio y FPS.
+- Subida de archivos o URL de origen.
+- Configuración avanzada v1: hablantes, acento, recorte, resolución, fondo, profanidades, clonación y watermark.
+- Cola con snapshot de configuración, progreso, cancelación local, reintento y persistencia de metadatos.
+- Biblioteca con búsqueda, filtros, metadatos, descarga y borrado.
+- Dubbing Studio v1: segmentos editables, tiempos, traducción, regeneración por clip/proyecto, speakers, idiomas y render MP4/AAC/MP3/WAV/AAF/tracks ZIP/clips ZIP.
+- Exportación CSV y fallback de transcript cuando el workspace no tiene acceso al recurso editable.
+- Modo demo seguro para verificar el flujo sin crear trabajos reales.
+- Servidor estático local con headers básicos y rutas inexistentes `404`.
 
-## Uso
+## Ejecutar
 
 ```bash
-node server.mjs
+npm start
 ```
 
-Abrir `http://localhost:3000`
+Abrir `http://localhost:3000`.
 
-O simplemente abrir `index.html` en cualquier navegador.
+Para probar el flujo completo sin consumir créditos:
 
-## Configuración
+```text
+http://localhost:3000/?demo=1
+```
 
-La URL del proxy de doblaje está en la constante `API` al inicio del script en `index.html`. Cambiarla si se usa otro endpoint compatible con el API de ElevenLabs Dubbing.
+## Tests
 
-## Notas
+```bash
+npm test
+```
 
-- Dependencia cero — HTML + JS vanilla + un mini servidor estático (opcional, sirve como fallback de CORS)
-- Los archivos se suben directamente al servicio de doblaje; la app es 100% local
+Los tests cubren el mapeo del formulario del gateway, validación de URLs, snapshot de configuración de la cola, finalización y errores del proveedor.
+
+## Integración real
+
+La UI no contiene una API key de ElevenLabs. Las operaciones reales pasan por la Edge Function de Supabase definida como `DEFAULT_API` en `app/gateway.mjs`. El gateway es el punto donde deben mantenerse los nombres de campos y rutas del proxy.
+
+La creación v1 envía siempre `dubbing_studio=true`, no envía `model_id` y usa `mode=automatic|manual`. Las descargas de media usan `/v1/dubbing/:id/audio/:language`; los transcriptos prueban primero la ruta oficial singular con `format_type` y mantienen fallback para el proxy plural existente.
+
+El listado real del gateway fue verificado con respuesta JSON. El recurso editable v1 responde `401` si el workspace no está habilitado para la closed beta de Dubbing Studio; la interfaz lo muestra y conserva la vista de transcript. Cuando ElevenLabs habilite ese permiso, las operaciones de Studio ya están cableadas en el adaptador.
+
+La matriz de rutas v1 está documentada en `docs/elevenlabs-v1-contract.md`.
+
+## Estructura
+
+```text
+index.html          shell de la aplicación
+styles.css          sistema visual responsive
+app/main.mjs        interacción y vistas
+app/gateway.mjs     adaptador del proveedor
+app/queue.mjs       máquina de estados de la cola
+app/storage.mjs     IndexedDB con fallback local
+app/demo-gateway.mjs transporte fake para QA
+app/languages.mjs   catálogo de idiomas
+tests/              tests Node nativos
+```
