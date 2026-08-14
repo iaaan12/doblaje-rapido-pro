@@ -1,4 +1,4 @@
-// Servidor estático — compatible con Vercel (serverless) y local (node server.mjs)
+// Servidor estático local; el frontend usa el gateway remoto de doblaje.
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
@@ -19,14 +19,20 @@ const types = {
 };
 
 const handler = async (req, res) => {
-  const urlPath = (req.url || '/').split('?')[0];
-  let filePath = path.join(dir, urlPath === '/' ? 'index.html' : decodeURIComponent(urlPath));
-  if (!filePath.startsWith(dir) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
-    filePath = path.join(dir, 'index.html');
+  const rawPath = (req.url || '/').split('?')[0];
+  let decoded;
+  try { decoded = decodeURIComponent(rawPath); } catch { res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('Bad request'); return; }
+  const relative = decoded === '/' ? 'index.html' : decoded.replace(/^[/\\]+/, '');
+  const filePath = path.resolve(dir, relative);
+  const root = `${path.resolve(dir)}${path.sep}`;
+  if (!filePath.startsWith(root) || !fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'X-Content-Type-Options': 'nosniff' });
+    res.end('Not found');
+    return;
   }
   const ext = path.extname(filePath).toLowerCase();
-  res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
-  fs.createReadStream(filePath).pipe(res);
+  res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600' });
+  fs.createReadStream(filePath).on('error', () => { if (!res.headersSent) res.writeHead(500); res.end(); }).pipe(res);
 };
 
 // Local: `node server.mjs`

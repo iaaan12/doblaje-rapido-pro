@@ -1,0 +1,4 @@
+.studio-empty[hidden],
+.studio-workspace[hidden] {
+  display: none !important;
+}
