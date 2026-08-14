@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
@@ -16,6 +16,9 @@ test('build produces the static runtime that Vercel serves', () => {
       false,
       'Root server.mjs would be detected as a Vercel serverless entrypoint',
     );
+
+    const vercelConfig = JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'utf8'));
+    assert.equal(vercelConfig.framework, null, 'Vercel must use the Other/static framework preset');
 
     const result = spawnSync(process.execPath, ['scripts/build-static.mjs'], {
       cwd: root,
