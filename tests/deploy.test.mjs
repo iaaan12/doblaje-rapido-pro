@@ -19,6 +19,11 @@ test('build produces the static runtime that Vercel serves', () => {
 
     const vercelConfig = JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'utf8'));
     assert.equal(vercelConfig.framework, null, 'Vercel must use the Other/static framework preset');
+    assert.deepEqual(
+      vercelConfig.redirects?.find(({ source }) => source === '/favicon.ico'),
+      { source: '/favicon.ico', destination: '/favicon.svg', permanent: true },
+      'Legacy favicon requests must resolve without a 404',
+    );
 
     const result = spawnSync(process.execPath, ['scripts/build-static.mjs'], {
       cwd: root,
