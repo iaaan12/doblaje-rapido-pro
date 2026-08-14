@@ -2,7 +2,7 @@ import { cp, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const sourceFiles = ['index.html', 'styles.css', 'compat.css'];
+const sourceFiles = ['index.html', 'styles.css', 'compat.css', 'favicon.svg'];
 const sourceDirectories = ['app'];
 
 export async function buildStatic({
