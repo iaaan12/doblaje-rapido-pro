@@ -17,8 +17,13 @@ function storedJob(job) {
   return { ...rest, fileName: file?.name || job.fileName || null };
 }
 
+function hasManualAudio(job) {
+  return job.settings?.mode === 'manual'
+    && Boolean(job.settings?.foregroundAudioFile || job.settings?.backgroundAudioFile);
+}
+
 export class QueueManager {
-  constructor({ gateway, store, pollMs = 4000, concurrency = 1, onChange = () => {}, maxPolls = 180 } = {}) {
+  constructor({ gateway, store, pollMs = 4000, concurrency = 1, onChange = () => {}, maxPolls = 900, maxConsecutiveMisses = 8 } = {}) {
     if (!gateway || !store) throw new Error('QueueManager necesita gateway y store');
     this.gateway = gateway;
     this.store = store;
@@ -26,6 +31,7 @@ export class QueueManager {
     this.concurrency = Math.max(1, Math.min(5, concurrency));
     this.onChange = onChange;
     this.maxPolls = maxPolls;
+    this.maxConsecutiveMisses = Math.max(1, Math.min(30, maxConsecutiveMisses));
     this.jobs = [];
     this.active = 0;
     this.idleWaiters = [];
@@ -34,11 +40,15 @@ export class QueueManager {
   async restore() {
     this.jobs = await this.store.loadAll();
     for (const job of this.jobs) {
+      if (job.dubbingId && this.gateway.resumeRemoteJobs === false) {
+        job.dubbingId = null;
+        job.expectedDurationSec = 0;
+      }
       if (job.status === 'processing' || job.status === 'preparing' || job.status === 'dubbing') {
-        job.status = job.dubbingId ? 'queued' : 'needs-source';
+        job.status = job.dubbingId || job.sourceType !== 'file' || hasManualAudio(job) ? 'queued' : 'needs-source';
         await this.store.put(storedJob(job));
       }
-      if (job.status === 'queued' && job.sourceType === 'file' && !job.file) {
+      if (job.status === 'queued' && job.sourceType === 'file' && !job.file && !job.dubbingId && !hasManualAudio(job)) {
         job.status = 'needs-source';
         await this.store.put(storedJob(job));
       }
@@ -78,7 +88,23 @@ export class QueueManager {
   async retry(id) {
     const job = this.jobs.find(item => item.id === id);
     if (!job || !['failed', 'cancelled', 'needs-source'].includes(job.status)) return false;
-    job.status = job.sourceType === 'file' && !job.file ? 'needs-source' : 'queued';
+    job.status = job.sourceType === 'file' && !job.file && !hasManualAudio(job) ? 'needs-source' : 'queued';
+    job.cancelRequested = false;
+    job.error = null;
+    job.progress = 0;
+    await this.persist(job);
+    this.emit();
+    this.schedule();
+    return true;
+  }
+
+  async attachFile(id, file) {
+    const job = this.jobs.find(item => item.id === id);
+    if (!job || job.status !== 'needs-source' || !file) return false;
+    job.file = file;
+    job.fileName = file.name || job.fileName || null;
+    job.status = 'queued';
+    job.cancelRequested = false;
     job.error = null;
     job.progress = 0;
     await this.persist(job);
@@ -133,14 +159,26 @@ export class QueueManager {
 
   async run(job) {
     try {
-      await this.set(job, { status: 'preparing', progress: 8, providerStatus: 'preparing' });
-      const payload = { ...clone(job.settings), name: job.name, sourceUrl: job.sourceUrl, file: job.file };
-      const created = await this.gateway.createDub(payload);
-      job.dubbingId = created.dubbing_id;
-      await this.set(job, { status: 'processing', progress: 28, providerStatus: 'queued' });
+      if (!job.dubbingId) {
+        await this.set(job, { status: 'preparing', progress: 8, providerStatus: 'preparing' });
+        const payload = { ...clone(job.settings), name: job.name, sourceUrl: job.sourceUrl, file: job.file };
+        const created = await this.gateway.createDub(payload);
+        if (!created?.dubbing_id) throw new Error('El gateway no devolvió un dubbing_id');
+        job.dubbingId = created.dubbing_id;
+        job.expectedDurationSec = Number(created.expected_duration_sec) || 0;
+      }
+      await this.set(job, {
+        status: 'processing',
+        progress: Math.max(job.progress || 0, 28),
+        providerStatus: job.providerStatus || 'queued',
+      });
 
       let misses = 0;
-      for (let attempt = 0; attempt < this.maxPolls; attempt += 1) {
+      const estimatedPolls = job.expectedDurationSec > 0
+        ? Math.ceil(((job.expectedDurationSec * 4) + 900) * 1000 / Math.max(this.pollMs, 1))
+        : 0;
+      const pollLimit = Math.max(this.maxPolls, estimatedPolls);
+      for (let attempt = 0; attempt < pollLimit; attempt += 1) {
         if (job.cancelRequested) {
           await this.set(job, { status: 'cancelled', progress: 0 });
           return;
@@ -152,12 +190,16 @@ export class QueueManager {
           misses = 0;
         } catch (error) {
           misses += 1;
-          if (misses >= 3) throw new Error(`No se pudo consultar el doblaje: ${error.message}`);
+          if (misses >= this.maxConsecutiveMisses) throw new Error(`No se pudo consultar el doblaje: ${error.message}`);
           continue;
         }
         const remoteStatus = remote.status || 'queued';
         const progress = PROGRESS[remoteStatus] ?? Math.min(92, 30 + attempt);
-        if (['failed', 'error'].includes(remoteStatus)) throw new Error(remote.error || 'El proveedor marcó el doblaje como fallido');
+        if (['failed', 'error'].includes(remoteStatus)) {
+          job.dubbingId = null;
+          job.expectedDurationSec = 0;
+          throw new Error(remote.error || 'El proveedor marcó el doblaje como fallido');
+        }
         if (remoteStatus === 'dubbed') {
           await this.set(job, { status: 'dubbed', progress: 100, providerStatus: remoteStatus, remote });
           return;

@@ -1,6 +1,6 @@
 # Contrato usado: ElevenLabs Dubbing v1
 
-La app fuerza el flujo legacy v1 + Dubbing Studio. No se selecciona ni se envía Dubbing v2.
+La app usa el flujo legacy v1. Dubbing Studio es una opción explícita porque requiere acceso adicional del workspace. No se selecciona ni se envía Dubbing v2.
 
 ## Creación y consulta
 
@@ -10,7 +10,7 @@ La app fuerza el flujo legacy v1 + Dubbing Studio. No se selecciona ni se envía
 | Obtener estado | GET | `/v1/dubbing/:dubbing_id` |
 | Listar | GET | `/v1/dubbing` |
 | Descargar media | GET | `/v1/dubbing/:dubbing_id/audio/:language` |
-| Transcript | GET | `/v1/dubbing/:dubbing_id/transcript/:language?format_type=json` |
+| Transcript | GET | `/v1/dubbing/:dubbing_id/transcripts/:language/format/:format` |
 | Borrar dub | DELETE | `/v1/dubbing/:dubbing_id` |
 
 ## Dubbing Studio v1
@@ -31,10 +31,10 @@ La app fuerza el flujo legacy v1 + Dubbing Studio. No se selecciona ni se envía
 
 ## Campos relevantes
 
-La creación envía los nombres multipart documentados por v1: `file`, `source_url`, `name`, `source_lang`, `target_lang`, `target_accent`, `num_speakers`, `start_time`, `end_time`, `highest_resolution`, `drop_background_audio`, `use_profanity_filter`, `watermark`, `disable_voice_cloning`, `dubbing_studio`, `mode`, `csv_fps`, `csv_file`, `foreground_audio_file` y `background_audio_file`.
+La creación envía los nombres multipart documentados por v1: `file`, `source_url`, `name`, `source_lang`, `target_lang`, `target_accent`, `num_speakers`, `start_time`, `end_time`, `highest_resolution`, `drop_background_audio`, `use_profanity_filter`, `watermark`, `disable_voice_cloning`, `dubbing_studio`, `mode`, `csv_fps`, `csv_file`, `foreground_audio_file` y `background_audio_file`. Los campos vacíos se omiten; `source_lang` queda vacío por defecto y `dubbing_studio` sólo se envía al activar Studio.
 
 ## Verificación realizada
 
 - `GET /v1/dubbing` respondió JSON desde el gateway configurado.
-- `GET /v1/dubbing/resource/:id` respondió el error de autorización de closed beta del workspace, por lo que no se creó ni modificó ningún proyecto real.
-- El adaptador y el demo cubren las rutas y payloads de Studio con tests Node y E2E de navegador.
+- `GET /v1/dubbing/resource/:id` respondió el error de autorización del workspace. La edición de recursos Studio no puede certificarse mientras ese permiso externo no exista.
+- El adaptador cubre las rutas y payloads de Studio con tests Node; la UI degrada a transcript de sólo lectura cuando el recurso editable no está disponible.
